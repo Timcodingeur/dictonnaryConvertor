@@ -4,17 +4,11 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using UglyToad.PdfPig;
-using UglyToad.PdfPig.Content;
 
 public class WordEntry
 {
     public string Romansh { get; set; }
     public string German { get; set; }
-    public string French { get; set; }
-    public string Italian { get; set; }
-    public string SwissGerman { get; set; }
 }
 
 public class DictionaryParser
@@ -22,78 +16,60 @@ public class DictionaryParser
     public static List<WordEntry> Parse(string filePath)
     {
         var entries = new List<WordEntry>();
-        var lines = new List<string>();
-
-        // Lire le contenu du PDF et extraire le texte
-        using (var document = PdfDocument.Open(filePath))
-        {
-            foreach (var page in document.GetPages())
-            {
-                var text = page.Text;
-                // Diviser le texte en lignes
-                var pageLines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                lines.AddRange(pageLines);
-            }
-        }
+        var lines = File.ReadAllLines(filePath);
 
         WordEntry currentEntry = null;
         StringBuilder definitionBuilder = new StringBuilder();
 
-        // Expression régulière pour détecter le début d'une entrée
-        var entryRegex = new Regex(@"^(?<romansh>[^\s]+(?:\s+[^\s]+)*)(?:\s+(?<abbrev>m\.|f\.|adj\.|v\.|adv\.|pron\.|part\.|n\.|interj\.))?\s*(?<definition>.*)$");
-
+        // Utiliser une expression régulière pour détecter une nouvelle entrée plus précisément
         foreach (var line in lines)
         {
-            var trimmedLine = line.Trim();
-
-            if (string.IsNullOrWhiteSpace(trimmedLine))
+            if (string.IsNullOrWhiteSpace(line))
             {
-                // Ligne vide, on l'ignore
-                continue;
+                continue; // Ignorer les lignes vides
             }
 
-            // Vérifier si la ligne correspond au début d'une nouvelle entrée
-            if (!char.IsWhiteSpace(line, 0))
+            var trimmedLine = line.Trim();
+
+            // Si la ligne commence par une lettre majuscule suivie d'un point, il s'agit probablement d'une nouvelle entrée
+            if (Regex.IsMatch(trimmedLine, @"^[A-ZÀ-ſ][a-zA-ZÀ-ſ']*\]"))
             {
-                // Si nous avons une entrée en cours, nous la sauvegardons
+                // Nouvelle entrée
                 if (currentEntry != null)
                 {
                     currentEntry.German = definitionBuilder.ToString().Trim();
                     entries.Add(currentEntry);
-                    currentEntry = null;
                     definitionBuilder.Clear();
                 }
 
-                // Essayer de faire correspondre la ligne avec l'expression régulière
-                var match = entryRegex.Match(trimmedLine);
+                // Extraire le mot en romanche
+                var match = Regex.Match(trimmedLine, @"^(?<romansh>[A-Za-zÀ-ſ']+)\](?<german>.*)");
+
                 if (match.Success)
                 {
-                    currentEntry = new WordEntry();
-                    currentEntry.Romansh = match.Groups["romansh"].Value.Trim();
-                    // Vous pouvez également collecter l'abréviation si nécessaire
-
-                    definitionBuilder.Append(match.Groups["definition"].Value.Trim());
+                    currentEntry = new WordEntry
+                    {
+                        Romansh = match.Groups["romansh"].Value,
+                        German = match.Groups["german"].Value.Trim()
+                    };
                 }
                 else
                 {
-                    // La ligne ne correspond pas au format attendu, on l'ajoute à la définition en cours
-                    if (currentEntry != null)
-                    {
-                        definitionBuilder.Append(" " + trimmedLine);
-                    }
+                    currentEntry = null;
+                    definitionBuilder.Clear();
                 }
             }
             else
             {
-                // Ligne commençant par un espace, continuation de la définition
+                // Si la ligne est indentée ou continue la définition de la ligne précédente
                 if (currentEntry != null)
                 {
-                    definitionBuilder.Append(" " + trimmedLine);
+                    definitionBuilder.AppendLine(trimmedLine);
                 }
             }
         }
 
-        // Ajouter la dernière entrée si elle existe
+        // Ajouter la dernière entrée
         if (currentEntry != null)
         {
             currentEntry.German = definitionBuilder.ToString().Trim();
@@ -108,8 +84,8 @@ class Program
 {
     static void Main(string[] args)
     {
-        // Chemin vers le fichier PDF contenant votre dictionnaire
-        string filePath = "./Dizionari_dels_idioms_romauntschs_d_Engi.pdf"; // Assurez-vous que ce chemin est correct
+        // Chemin vers le fichier texte extrait
+        string filePath = "./texte_extrait.txt"; // Assurez-vous que ce chemin est correct
 
         var entries = DictionaryParser.Parse(filePath);
 
@@ -120,17 +96,10 @@ class Program
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
-        // Exporter en JSON avec le format spécifié
+        // Exporter en JSON
         var result = new
         {
-            words = entries.ConvertAll(entry => new
-            {
-                romanche = entry.Romansh,
-                francais = entry.French ?? "",
-                suisse_allemand = entry.SwissGerman ?? "",
-                allemand = entry.German,
-                italien = entry.Italian ?? ""
-            })
+            words = entries
         };
 
         var json = JsonSerializer.Serialize(result, options);
