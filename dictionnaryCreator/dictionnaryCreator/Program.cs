@@ -21,7 +21,6 @@ public class DictionaryParser
         WordEntry currentEntry = null;
         StringBuilder definitionBuilder = new StringBuilder();
 
-        // Utiliser une expression régulière pour détecter une nouvelle entrée plus précisément
         foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line))
@@ -29,54 +28,70 @@ public class DictionaryParser
                 continue; // Ignorer les lignes vides
             }
 
-            var trimmedLine = line.Trim();
-
-            // Si la ligne commence par une lettre majuscule suivie d'un point, il s'agit probablement d'une nouvelle entrée
-            if (Regex.IsMatch(trimmedLine, @"^[A-ZÀ-ſ][a-zA-ZÀ-ſ']*\]"))
+            // Vérifier si la ligne commence par un mot (pas d'espace en début de ligne)
+            if (!char.IsWhiteSpace(line, 0))
             {
-                // Nouvelle entrée
-                if (currentEntry != null)
-                {
-                    currentEntry.German = definitionBuilder.ToString().Trim();
-                    entries.Add(currentEntry);
-                    definitionBuilder.Clear();
-                }
-
-                // Extraire le mot en romanche
-                var match = Regex.Match(trimmedLine, @"^(?<romansh>[A-Za-zÀ-ſ']+)\](?<german>.*)");
+                // Expression régulière pour détecter le début d'une entrée
+                var match = Regex.Match(line, @"^(?<romansh>\S+)(\s+(?<abbr>(?:[^\s.]+\.)+))?\s*(?<definition>.*)$");
 
                 if (match.Success)
                 {
-                    currentEntry = new WordEntry
+                    // Sauvegarder l'entrée précédente si elle existe
+                    if (currentEntry != null)
                     {
-                        Romansh = match.Groups["romansh"].Value,
-                        German = match.Groups["german"].Value.Trim()
-                    };
+                        currentEntry.German = CleanDefinition(definitionBuilder.ToString());
+                        entries.Add(currentEntry);
+                        definitionBuilder.Clear();
+                    }
+
+                    // Créer une nouvelle entrée
+                    currentEntry = new WordEntry();
+                    currentEntry.Romansh = match.Groups["romansh"].Value;
+
+                    // Ajouter la première ligne de la définition
+                    var def = match.Groups["definition"].Value;
+                    if (!string.IsNullOrEmpty(def))
+                    {
+                        definitionBuilder.AppendLine(def.Trim());
+                    }
                 }
                 else
                 {
-                    currentEntry = null;
-                    definitionBuilder.Clear();
+                    // Si la ligne ne correspond pas, elle fait partie de la définition précédente
+                    if (currentEntry != null)
+                    {
+                        definitionBuilder.AppendLine(line.Trim());
+                    }
                 }
             }
             else
             {
-                // Si la ligne est indentée ou continue la définition de la ligne précédente
+                // Ligne indentée, continuation de la définition
                 if (currentEntry != null)
                 {
-                    definitionBuilder.AppendLine(trimmedLine);
+                    definitionBuilder.AppendLine(line.Trim());
                 }
             }
         }
 
-        // Ajouter la dernière entrée
+        // Ajouter la dernière entrée si elle existe
         if (currentEntry != null)
         {
-            currentEntry.German = definitionBuilder.ToString().Trim();
+            currentEntry.German = CleanDefinition(definitionBuilder.ToString());
             entries.Add(currentEntry);
         }
 
         return entries;
+    }
+
+    private static string CleanDefinition(string rawDefinition)
+    {
+        // Remplacer les sauts de ligne par des espaces
+        rawDefinition = Regex.Replace(rawDefinition, @"\s+", " ").Trim();
+
+        // Vous pouvez ajouter d'autres nettoyages si nécessaire
+
+        return rawDefinition;
     }
 }
 
