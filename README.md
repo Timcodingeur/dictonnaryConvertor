@@ -54,6 +54,4 @@ Contributions are welcome! Feel free to fork the repository, make your changes, 
 ## License
 This project is open source and available under the [MIT License](LICENSE).
 
-## Contact
-If you have any questions or suggestions, please reach out through the [GitHub repository](https://github.com/Timcodingeur/dictonnaryConvertor).
 
